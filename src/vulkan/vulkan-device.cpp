@@ -213,10 +213,21 @@ namespace nvrhi::vulkan
             m_Context.warning("Opacity micro-maps are not currently supported by RTXMU.");
         }
 #endif
-        auto pipelineInfo = vk::PipelineCacheCreateInfo();
+        auto pipelineInfo = vk::PipelineCacheCreateInfo()
+            .setInitialDataSize(desc.pipelineCacheData ? desc.pipelineCacheDataSize : 0)
+            .setPInitialData(desc.pipelineCacheData);
         vk::Result res = m_Context.device.createPipelineCache(&pipelineInfo,
             m_Context.allocationCallbacks,
             &m_Context.pipelineCache);
+
+        if (res != vk::Result::eSuccess && desc.pipelineCacheData)
+        {
+            // Data the driver rejects: start with an empty cache
+            pipelineInfo.setInitialDataSize(0).setPInitialData(nullptr);
+            res = m_Context.device.createPipelineCache(&pipelineInfo,
+                m_Context.allocationCallbacks,
+                &m_Context.pipelineCache);
+        }
 
         if (res != vk::Result::eSuccess)
         {
@@ -239,6 +250,25 @@ namespace nvrhi::vulkan
 #if NVRHI_WITH_AFTERMATH
         m_AftermathEnabled = desc.aftermathEnabled;
 #endif
+    }
+
+    bool Device::getPipelineCacheData(std::vector<uint8_t>& outData)
+    {
+        outData.clear();
+        if (!m_Context.pipelineCache)
+            return false;
+
+        size_t size = 0;
+        if (m_Context.device.getPipelineCacheData(m_Context.pipelineCache, &size, nullptr) != vk::Result::eSuccess)
+            return false;
+        outData.resize(size);
+        if (m_Context.device.getPipelineCacheData(m_Context.pipelineCache, &size, outData.data()) != vk::Result::eSuccess)
+        {
+            outData.clear();
+            return false;
+        }
+        outData.resize(size);
+        return true;
     }
 
     Device::~Device()

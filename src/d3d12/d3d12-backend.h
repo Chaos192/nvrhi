@@ -132,6 +132,11 @@ namespace nvrhi::d3d12
 
         bool logBufferLifetime = false;
         IMessageCallback* messageCallback = nullptr;
+
+        // DeviceDesc::pPipelineLibrary (may be null), and its lock
+        RefCountPtr<ID3D12PipelineLibrary> pipelineLibrary;
+        std::shared_ptr<std::mutex> pipelineLibraryMutex = std::make_shared<std::mutex>();
+
         void error(const std::string& message) const;
         void info(const std::string& message) const;
     };
@@ -506,6 +511,7 @@ namespace nvrhi::d3d12
     {
     public:
         size_t hash = 0;
+        uint64_t blobHash = 0; // of the serialized root signature: the same in every run (pipeline library keys)
         static_vector<std::pair<BindingLayoutHandle, RootParameterIndex>, c_MaxBindingLayouts> pipelineLayouts;
         RefCountPtr<ID3D12RootSignature> handle;
         uint32_t pushConstantByteSize = 0;

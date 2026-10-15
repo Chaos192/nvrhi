@@ -128,6 +128,11 @@ namespace nvrhi::d3d12
         // Enable logging the buffer lifetime to IMessageCallback
         // Useful for debugging resource lifetimes
         bool logBufferLifetime = false;
+
+        // Optional: graphics and compute pipeline states are loaded from this library when it has them and stored into
+        // it when they're created, keyed by a hash of their description. The application creates it (from data it
+        // saved, ID3D12Device1::CreatePipelineLibrary) and serializes it; NVRHI only uses it.
+        ID3D12PipelineLibrary* pPipelineLibrary = nullptr;
     };
 
     NVRHI_API DeviceHandle createDevice(const DeviceDesc& desc);

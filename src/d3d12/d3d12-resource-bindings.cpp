@@ -724,6 +724,15 @@ namespace nvrhi::d3d12
 
         // Create the RS object
 
+        {
+            // FNV-1a of the serialized description, for pipeline library keys
+            uint64_t blobHash = 14695981039346656037ull;
+            const uint8_t* bytes = static_cast<const uint8_t*>(rsBlob->GetBufferPointer());
+            for (size_t i = 0; i < rsBlob->GetBufferSize(); i++)
+                blobHash = (blobHash ^ bytes[i]) * 1099511628211ull;
+            rootsig->blobHash = blobHash;
+        }
+
         res = m_Context.device->CreateRootSignature(0, rsBlob->GetBufferPointer(), rsBlob->GetBufferSize(), IID_PPV_ARGS(&rootsig->handle));
 
         if (FAILED(res))

@@ -1166,6 +1166,7 @@ namespace nvrhi::vulkan
         uint64_t queueGetCompletedInstance(CommandQueue queue) override;
         FramebufferHandle createHandleForNativeFramebuffer(VkRenderPass renderPass, VkFramebuffer framebuffer,
             const FramebufferDesc& desc, bool transferOwnership) override;
+        bool getPipelineCacheData(std::vector<uint8_t>& outData) override;
 
     private:
         VulkanContext m_Context;

@@ -41,6 +41,58 @@ namespace nvrhi::d3d12
     }
 
 
+
+    namespace
+    {
+        // FNV-1a, for pipeline library keys
+        struct PipelineKeyHasher
+        {
+            uint64_t value = 14695981039346656037ull;
+            void add(const void* data, size_t size)
+            {
+                const uint8_t* bytes = static_cast<const uint8_t*>(data);
+                for (size_t i = 0; i < size; i++)
+                    value = (value ^ bytes[i]) * 1099511628211ull;
+            }
+            template<typename T> void addValue(const T& v) { add(&v, sizeof(v)); }
+            void addBytecode(const D3D12_SHADER_BYTECODE& bytecode)
+            {
+                addValue(bytecode.BytecodeLength);
+                if (bytecode.pShaderBytecode)
+                    add(bytecode.pShaderBytecode, bytecode.BytecodeLength);
+            }
+            std::wstring key(wchar_t kind) const
+            {
+                wchar_t text[20];
+                swprintf(text, 20, L"%c%016llx", kind, (unsigned long long)value);
+                return text;
+            }
+        };
+
+        // A pipeline state from the library (DeviceDesc::pPipelineLibrary), or created and stored into it
+        template<typename Desc, typename Load, typename Create>
+        RefCountPtr<ID3D12PipelineState> loadOrCreatePipelineState(const Context& context, const std::wstring& key, const Desc& desc, Load load, Create create)
+        {
+            RefCountPtr<ID3D12PipelineState> pipelineState;
+            if (context.pipelineLibrary)
+            {
+                std::lock_guard<std::mutex> lock(*context.pipelineLibraryMutex);
+                if (SUCCEEDED(load(context.pipelineLibrary.Get(), key.c_str(), &desc, IID_PPV_ARGS(&pipelineState))))
+                    return pipelineState;
+            }
+
+            if (FAILED(create(&desc, IID_PPV_ARGS(&pipelineState))))
+                return nullptr;
+
+            if (context.pipelineLibrary)
+            {
+                std::lock_guard<std::mutex> lock(*context.pipelineLibraryMutex);
+                context.pipelineLibrary->StorePipeline(key.c_str(), pipelineState); // E_INVALIDARG if another thread stored it first
+            }
+            return pipelineState;
+        }
+    }
+
     RefCountPtr<ID3D12PipelineState> Device::createPipelineState(const ComputePipelineDesc & state, RootSignature* pRS) const
     {
         RefCountPtr<ID3D12PipelineState> pipelineState;
@@ -67,9 +119,15 @@ namespace nvrhi::d3d12
         }
 #endif
 
-        const HRESULT hr = m_Context.device->CreateComputePipelineState(&desc, IID_PPV_ARGS(&pipelineState));
+        PipelineKeyHasher key;
+        key.addValue(pRS->blobHash);
+        key.addBytecode(desc.CS);
 
-        if (FAILED(hr))
+        pipelineState = loadOrCreatePipelineState(m_Context, key.key(L'C'), desc,
+            [](ID3D12PipelineLibrary* library, LPCWSTR name, const D3D12_COMPUTE_PIPELINE_STATE_DESC* d, REFIID riid, void** out) { return library->LoadComputePipeline(name, d, riid, out); },
+            [this](const D3D12_COMPUTE_PIPELINE_STATE_DESC* d, REFIID riid, void** out) { return m_Context.device->CreateComputePipelineState(d, riid, out); });
+
+        if (!pipelineState)
         {
             m_Context.error("Failed to create a compute pipeline state object");
             return nullptr;

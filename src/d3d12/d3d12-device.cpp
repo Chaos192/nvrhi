@@ -95,6 +95,7 @@ namespace nvrhi::d3d12
         m_Context.device = desc.pDevice;
         m_Context.logBufferLifetime = desc.logBufferLifetime;
         m_Context.messageCallback = desc.errorCB;
+        m_Context.pipelineLibrary = desc.pPipelineLibrary;
 
         if (desc.pGraphicsCommandQueue)
             m_Queues[int(CommandQueue::Graphics)] = std::make_unique<Queue>(m_Context, desc.pGraphicsCommandQueue);

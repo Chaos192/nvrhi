@@ -45,6 +45,10 @@ namespace nvrhi::vulkan
         virtual uint64_t queueGetCompletedInstance(CommandQueue queue) = 0;
         virtual FramebufferHandle createHandleForNativeFramebuffer(VkRenderPass renderPass, 
             VkFramebuffer framebuffer, const FramebufferDesc& desc, bool transferOwnership) = 0;
+
+        // The contents of the device's VkPipelineCache (vkGetPipelineCacheData), for saving and passing back in
+        // DeviceDesc::pipelineCacheData next time. False if there is no cache or the call fails.
+        virtual bool getPipelineCacheData(std::vector<uint8_t>& outData) = 0;
     };
 
     typedef RefCountPtr<IDevice> DeviceHandle;
@@ -80,6 +84,11 @@ namespace nvrhi::vulkan
         bool aftermathEnabled = false;
 
         std::string vulkanLibraryName; // if empty, use default
+
+        // Optional initial contents of the device's VkPipelineCache (what getPipelineCacheData returned in an earlier
+        // run). The application should check the cache header (vendor, device, pipelineCacheUUID) before passing it.
+        const void* pipelineCacheData = nullptr;
+        size_t pipelineCacheDataSize = 0;
     };
 
     NVRHI_API DeviceHandle createDevice(const DeviceDesc& desc);
