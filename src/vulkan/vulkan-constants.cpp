@@ -105,6 +105,22 @@ namespace nvrhi::vulkan
         { Format::BC6H_SFLOAT,       VK_FORMAT_BC6H_SFLOAT_BLOCK        },
         { Format::BC7_UNORM,         VK_FORMAT_BC7_UNORM_BLOCK          },
         { Format::BC7_UNORM_SRGB,    VK_FORMAT_BC7_SRGB_BLOCK           },
+        { Format::ETC2_RGB8_UNORM,       VK_FORMAT_ETC2_R8G8B8_UNORM_BLOCK      },
+        { Format::ETC2_RGB8_UNORM_SRGB,  VK_FORMAT_ETC2_R8G8B8_SRGB_BLOCK       },
+        { Format::ETC2_RGBA8_UNORM,      VK_FORMAT_ETC2_R8G8B8A8_UNORM_BLOCK    },
+        { Format::ETC2_RGBA8_UNORM_SRGB, VK_FORMAT_ETC2_R8G8B8A8_SRGB_BLOCK     },
+        { Format::EAC_R11_UNORM,         VK_FORMAT_EAC_R11_UNORM_BLOCK          },
+        { Format::EAC_RG11_UNORM,        VK_FORMAT_EAC_R11G11_UNORM_BLOCK       },
+        { Format::ASTC_4x4_UNORM,        VK_FORMAT_ASTC_4x4_UNORM_BLOCK         },
+        { Format::ASTC_4x4_UNORM_SRGB,   VK_FORMAT_ASTC_4x4_SRGB_BLOCK          },
+        { Format::ASTC_5x5_UNORM,        VK_FORMAT_ASTC_5x5_UNORM_BLOCK         },
+        { Format::ASTC_5x5_UNORM_SRGB,   VK_FORMAT_ASTC_5x5_SRGB_BLOCK          },
+        { Format::ASTC_6x6_UNORM,        VK_FORMAT_ASTC_6x6_UNORM_BLOCK         },
+        { Format::ASTC_6x6_UNORM_SRGB,   VK_FORMAT_ASTC_6x6_SRGB_BLOCK          },
+        { Format::ASTC_8x8_UNORM,        VK_FORMAT_ASTC_8x8_UNORM_BLOCK         },
+        { Format::ASTC_8x8_UNORM_SRGB,   VK_FORMAT_ASTC_8x8_SRGB_BLOCK          },
+        { Format::ASTC_4x4_SFLOAT,       VK_FORMAT_ASTC_4x4_SFLOAT_BLOCK        },
+        { Format::ASTC_6x6_SFLOAT,       VK_FORMAT_ASTC_6x6_SFLOAT_BLOCK        },
 
     } };
 

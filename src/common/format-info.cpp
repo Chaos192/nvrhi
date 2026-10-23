@@ -95,6 +95,22 @@ namespace nvrhi
         { Format::BC6H_SFLOAT,       "BC6H_SFLOAT",       16,  4, FormatKind::Float,        true,  true,  true,  false, false, false, true,  false },
         { Format::BC7_UNORM,         "BC7_UNORM",         16,  4, FormatKind::Normalized,   true,  true,  true,  true,  false, false, false, false },
         { Format::BC7_UNORM_SRGB,    "BC7_UNORM_SRGB",    16,  4, FormatKind::Normalized,   true,  true,  true,  true,  false, false, false, true  },
+        { Format::ETC2_RGB8_UNORM,       "ETC2_RGB8_UNORM",        8,  4, FormatKind::Normalized,  true , true , true , false, false, false, false, false },
+        { Format::ETC2_RGB8_UNORM_SRGB,  "ETC2_RGB8_UNORM_SRGB",   8,  4, FormatKind::Normalized,  true , true , true , false, false, false, false, true  },
+        { Format::ETC2_RGBA8_UNORM,      "ETC2_RGBA8_UNORM",      16,  4, FormatKind::Normalized,  true , true , true , true , false, false, false, false },
+        { Format::ETC2_RGBA8_UNORM_SRGB, "ETC2_RGBA8_UNORM_SRGB", 16,  4, FormatKind::Normalized,  true , true , true , true , false, false, false, true  },
+        { Format::EAC_R11_UNORM,         "EAC_R11_UNORM",          8,  4, FormatKind::Normalized,  true , false, false, false, false, false, false, false },
+        { Format::EAC_RG11_UNORM,        "EAC_RG11_UNORM",        16,  4, FormatKind::Normalized,  true , true , false, false, false, false, false, false },
+        { Format::ASTC_4x4_UNORM,        "ASTC_4x4_UNORM",        16,  4, FormatKind::Normalized,  true , true , true , true , false, false, false, false },
+        { Format::ASTC_4x4_UNORM_SRGB,   "ASTC_4x4_UNORM_SRGB",   16,  4, FormatKind::Normalized,  true , true , true , true , false, false, false, true  },
+        { Format::ASTC_5x5_UNORM,        "ASTC_5x5_UNORM",        16,  5, FormatKind::Normalized,  true , true , true , true , false, false, false, false },
+        { Format::ASTC_5x5_UNORM_SRGB,   "ASTC_5x5_UNORM_SRGB",   16,  5, FormatKind::Normalized,  true , true , true , true , false, false, false, true  },
+        { Format::ASTC_6x6_UNORM,        "ASTC_6x6_UNORM",        16,  6, FormatKind::Normalized,  true , true , true , true , false, false, false, false },
+        { Format::ASTC_6x6_UNORM_SRGB,   "ASTC_6x6_UNORM_SRGB",   16,  6, FormatKind::Normalized,  true , true , true , true , false, false, false, true  },
+        { Format::ASTC_8x8_UNORM,        "ASTC_8x8_UNORM",        16,  8, FormatKind::Normalized,  true , true , true , true , false, false, false, false },
+        { Format::ASTC_8x8_UNORM_SRGB,   "ASTC_8x8_UNORM_SRGB",   16,  8, FormatKind::Normalized,  true , true , true , true , false, false, false, true  },
+        { Format::ASTC_4x4_SFLOAT,       "ASTC_4x4_SFLOAT",       16,  4, FormatKind::Float,       true , true , true , true , false, false, true , false },
+        { Format::ASTC_6x6_SFLOAT,       "ASTC_6x6_SFLOAT",       16,  6, FormatKind::Float,       true , true , true , true , false, false, true , false },
     };
 
     const FormatInfo& getFormatInfo(Format format)

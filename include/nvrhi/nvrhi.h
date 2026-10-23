@@ -157,6 +157,8 @@ namespace nvrhi
         VULKAN
     };
 
+    // (Draxor fork, M5) the ETC2 / EAC / ASTC formats at the end of Format: code that uses them checks this
+#define NVRHI_HAS_MOBILE_FORMATS 1
     enum class Format : uint8_t
     {
         UNKNOWN,
@@ -230,6 +232,26 @@ namespace nvrhi
         BC6H_SFLOAT,
         BC7_UNORM,
         BC7_UNORM_SRGB,
+
+        // Mobile block compression (Vulkan on Android / Apple GPUs; D3D has none of them). ASTC blocks are square:
+        // FormatInfo::blockSize is their edge; SFLOAT is ASTC HDR (VK_EXT_texture_compression_astc_hdr, core in 1.3
+        // as an optional feature).
+        ETC2_RGB8_UNORM,
+        ETC2_RGB8_UNORM_SRGB,
+        ETC2_RGBA8_UNORM,
+        ETC2_RGBA8_UNORM_SRGB,
+        EAC_R11_UNORM,
+        EAC_RG11_UNORM,
+        ASTC_4x4_UNORM,
+        ASTC_4x4_UNORM_SRGB,
+        ASTC_5x5_UNORM,
+        ASTC_5x5_UNORM_SRGB,
+        ASTC_6x6_UNORM,
+        ASTC_6x6_UNORM_SRGB,
+        ASTC_8x8_UNORM,
+        ASTC_8x8_UNORM_SRGB,
+        ASTC_4x4_SFLOAT,
+        ASTC_6x6_SFLOAT,
 
         COUNT,
     };
