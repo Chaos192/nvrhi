@@ -725,6 +725,15 @@ namespace nvrhi::vulkan
 
         bool managed = true;
 
+        // (Draxor fork) What the render pass was made from, for explicit passes' variants with other load / store ops
+        static_vector<vk::AttachmentDescription2, c_MaxRenderTargets + 2> attachmentDescs;
+        static_vector<vk::AttachmentReference2, c_MaxRenderTargets> colorAttachmentRefs;
+        vk::AttachmentReference2 depthAttachmentRef;
+        bool hasDepthAttachment = false;
+        bool hasShadingRateAttachment = false;
+        // The render pass for an explicit pass's ops (the default one when they are all Load / Store); null on failure
+        vk::RenderPass getRenderPassForOps(const RenderPassDesc& ops);
+
         explicit Framebuffer(const VulkanContext& context)
             : m_Context(context)
         { }
@@ -736,6 +745,8 @@ namespace nvrhi::vulkan
 
     private:
         const VulkanContext& m_Context;
+        std::mutex m_RenderPassesMutex;
+        std::unordered_map<uint64_t, vk::RenderPass> m_RenderPassesForOps;
     };
 
     class BindingLayout : public RefCounter<IBindingLayout>
@@ -1272,6 +1283,9 @@ namespace nvrhi::vulkan
 
         void commitBarriers() override;
 
+        void beginRenderPass(IFramebuffer* framebuffer, const RenderPassDesc& desc) override;
+        void endRenderPass() override;
+
         ResourceStates getTextureSubresourceState(ITexture* texture, ArraySlice arraySlice, MipLevel mipLevel) override;
         ResourceStates getBufferState(IBuffer* buffer) override;
 
@@ -1299,6 +1313,8 @@ namespace nvrhi::vulkan
         vk::PipelineLayout m_CurrentPipelineLayout;
         vk::ShaderStageFlags m_CurrentPushConstantsVisibility;
         GraphicsState m_CurrentGraphicsState{};
+        bool m_InExplicitRenderPass = false;   // (Draxor fork) between beginRenderPass and endRenderPass
+        bool m_ExplicitPassDiscards = false;   // ... and it stores an attachment with DontCare
         ComputeState m_CurrentComputeState{};
         MeshletState m_CurrentMeshletState{};
         rt::State m_CurrentRayTracingState;
@@ -1322,7 +1338,7 @@ namespace nvrhi::vulkan
 
         void bindBindingSets(vk::PipelineBindPoint bindPoint, vk::PipelineLayout pipelineLayout, const BindingSetVector& bindings, BindingVector<uint32_t> const& descriptorSetIdxToBindingIdx);
 
-        void endRenderPass();
+        void endRenderPassInternal();
 
         void trackResourcesAndBarriers(const GraphicsState& state);
         void trackResourcesAndBarriers(const MeshletState& state);

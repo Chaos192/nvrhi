@@ -340,7 +340,7 @@ namespace nvrhi::vulkan
         if (m_StateTracker.getBufferBarriers().empty() && m_StateTracker.getTextureBarriers().empty())
             return;
 
-        endRenderPass();
+        endRenderPassInternal();
 
         if (m_Context.extensions.KHR_synchronization2)
         {

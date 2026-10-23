@@ -248,7 +248,7 @@ namespace nvrhi::vulkan
 
         if (m_CurrentMeshletState.framebuffer != state.framebuffer || anyBarriers /* because barriers cannot be set inside a renderpass */)
         {
-            endRenderPass();
+            endRenderPassInternal();
         }
 
         commitBarriers();

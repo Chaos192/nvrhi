@@ -159,6 +159,9 @@ namespace nvrhi
 
     // (Draxor fork, M5) the ETC2 / EAC / ASTC formats at the end of Format: code that uses them checks this
 #define NVRHI_HAS_MOBILE_FORMATS 1
+// (Draxor fork, mobile) Explicit render passes with load / store ops, and transient (tile-only) attachments:
+// ICommandList::beginRenderPass / endRenderPass, RenderPassDesc, TextureDesc::isTransient
+#define NVRHI_HAS_EXPLICIT_RENDER_PASSES 1
     enum class Format : uint8_t
     {
         UNKNOWN,
@@ -457,6 +460,12 @@ namespace nvrhi
         // on command list close.
         bool keepInitialState = false;
 
+        // (Draxor fork) A render target that only ever lives inside explicit render passes (depth, MSAA colour on a
+        // tile-based GPU): Vulkan creates it with TRANSIENT_ATTACHMENT usage in lazily allocated memory where the
+        // device has it, so it may never get memory at all. It can't be sampled, copied or cleared outside a pass:
+        // load it with LoadOp::Clear or DontCare and store it with StoreOp::DontCare. Ignored by D3D11 / D3D12.
+        bool isTransient = false;
+
         constexpr TextureDesc& setWidth(uint32_t value) { width = value; return *this; }
         constexpr TextureDesc& setHeight(uint32_t value) { height = value; return *this; }
         constexpr TextureDesc& setDepth(uint32_t value) { depth = value; return *this; }
@@ -476,6 +485,7 @@ namespace nvrhi
         constexpr TextureDesc& setInitialState(ResourceStates value) { initialState = value; return *this; }
         constexpr TextureDesc& setKeepInitialState(bool value) { keepInitialState = value; return *this; }
         constexpr TextureDesc& setSharedResourceFlags(SharedResourceFlags value) { sharedResourceFlags = value; return *this; }
+        constexpr TextureDesc& setIsTransient(bool value) { isTransient = value; return *this; }
     };
 
     // Describes a 2D or 3D section of a single mip level, single array slice of a texture.
@@ -1307,6 +1317,50 @@ namespace nvrhi
         FramebufferDesc& setShadingRateAttachment(const FramebufferAttachment& d) { shadingRateAttachment = d; return *this; }
         FramebufferDesc& setShadingRateAttachment(ITexture* texture) { shadingRateAttachment = FramebufferAttachment().setTexture(texture); return *this; }
         FramebufferDesc& setShadingRateAttachment(ITexture* texture, TextureSubresourceSet subresources) { shadingRateAttachment = FramebufferAttachment().setTexture(texture).setSubresources(subresources); return *this; }
+    };
+
+    // (Draxor fork) What an explicit render pass does with an attachment as it begins and as it ends
+    // (ICommandList::beginRenderPass). On a tile-based GPU, Load and Store move the attachment between memory and the
+    // tile; Clear and DontCare at the start, DontCare at the end, don't.
+    enum class LoadOp : uint8_t
+    {
+        Load,       // the contents from before the pass
+        Clear,      // the clear value
+        DontCare    // undefined: everything will be drawn over
+    };
+
+    enum class StoreOp : uint8_t
+    {
+        Store,      // kept for later passes
+        DontCare    // discarded (depth or MSAA colour used only inside the pass)
+    };
+
+    struct RenderPassAttachment
+    {
+        LoadOp loadOp = LoadOp::Load;
+        StoreOp storeOp = StoreOp::Store;
+        Color clearColor;           // LoadOp::Clear of a colour attachment (float formats)
+        float clearDepth = 1.f;     // LoadOp::Clear of the depth attachment
+        uint8_t clearStencil = 0;   // stencilLoadOp Clear
+
+        constexpr RenderPassAttachment& setLoadOp(LoadOp value) { loadOp = value; return *this; }
+        constexpr RenderPassAttachment& setStoreOp(StoreOp value) { storeOp = value; return *this; }
+        RenderPassAttachment& setClearColor(const Color& value) { loadOp = LoadOp::Clear; clearColor = value; return *this; }
+        constexpr RenderPassAttachment& setClearDepth(float value) { loadOp = LoadOp::Clear; clearDepth = value; return *this; }
+        constexpr RenderPassAttachment& setClearStencil(uint8_t value) { clearStencil = value; return *this; }
+    };
+
+    struct RenderPassDesc
+    {
+        // One per colour attachment of the framebuffer, in order; attachments without one load and store
+        static_vector<RenderPassAttachment, c_MaxRenderTargets> colorAttachments;
+        RenderPassAttachment depthAttachment;
+        LoadOp stencilLoadOp = LoadOp::Load;    // a depth-stencil attachment's stencil aspect
+        StoreOp stencilStoreOp = StoreOp::Store;
+
+        RenderPassDesc& addColorAttachment(const RenderPassAttachment& a) { colorAttachments.push_back(a); return *this; }
+        RenderPassDesc& setDepthAttachment(const RenderPassAttachment& a) { depthAttachment = a; return *this; }
+        RenderPassDesc& setStencilOps(LoadOp load, StoreOp store) { stencilLoadOp = load; stencilStoreOp = store; return *this; }
     };
 
     // Describes the parameters of a framebuffer that can be used to determine if a given framebuffer
@@ -3376,6 +3430,31 @@ namespace nvrhi
         // Flushes the barriers from the pending list into the graphics API command list.
         // Has no effect on DX11.
         virtual void commitBarriers() = 0;
+
+        // (Draxor fork) An explicit render pass: the framebuffer's attachments load and store as `desc` says. Between
+        // beginRenderPass and endRenderPass, setGraphicsState / setMeshletState must name this framebuffer and only
+        // draws are recorded: anything that ends a render pass implicitly (copies, clears, dispatches, queries, a
+        // binding that needs a barrier) ends it there. A pass that stores every attachment then goes on as an implicit
+        // one (correct, only slower); one that stores with DontCare loses those attachments, which is reported as an error.
+        // Transition what the draws read before beginRenderPass (setTextureState + commitBarriers).
+        // - Vulkan: the framebuffer's render pass with these load / store ops (one per op set, made once; pipelines are
+        //   compatible with all of them), the clear values in vkCmdBeginRenderPass.
+        // - DX11/12 (this default): Clear attachments are cleared at the start; DontCare is ignored.
+        virtual void beginRenderPass(IFramebuffer* framebuffer, const RenderPassDesc& desc)
+        {
+            const FramebufferDesc& fb = framebuffer->getDesc();
+            for (size_t i = 0; i < fb.colorAttachments.size() && i < desc.colorAttachments.size(); i++)
+            {
+                if (fb.colorAttachments[i].valid() && desc.colorAttachments[i].loadOp == LoadOp::Clear)
+                    clearTextureFloat(fb.colorAttachments[i].texture, fb.colorAttachments[i].subresources, desc.colorAttachments[i].clearColor);
+            }
+            const bool clearDepth = desc.depthAttachment.loadOp == LoadOp::Clear;
+            const bool clearStencil = desc.stencilLoadOp == LoadOp::Clear;
+            if (fb.depthAttachment.valid() && (clearDepth || clearStencil))
+                clearDepthStencilTexture(fb.depthAttachment.texture, fb.depthAttachment.subresources, clearDepth, desc.depthAttachment.clearDepth,
+                    clearStencil, desc.depthAttachment.clearStencil);
+        }
+        virtual void endRenderPass() { }
 
         // Returns the current tracked state of a texture subresource.
         // If the state is not known to the command list, returns ResourceStates::Unknown. Using the texture in this

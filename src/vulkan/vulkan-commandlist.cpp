@@ -73,7 +73,7 @@ namespace nvrhi::vulkan
 
     void CommandList::close()
     {
-        endRenderPass();
+        endRenderPassInternal();
 
         m_StateTracker.keepBufferInitialStates();
         m_StateTracker.keepTextureInitialStates();
@@ -95,7 +95,7 @@ namespace nvrhi::vulkan
 
     void CommandList::clearState()
     {
-        endRenderPass();
+        endRenderPassInternal();
 
         m_CurrentPipelineLayout = vk::PipelineLayout();
         m_CurrentPushConstantsVisibility = vk::ShaderStageFlagBits();

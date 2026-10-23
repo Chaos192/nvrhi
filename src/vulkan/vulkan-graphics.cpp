@@ -208,6 +208,15 @@ namespace nvrhi::vulkan
             subpass.setPNext(&shadingRateAttachmentInfo);
         }
 
+        // (Draxor fork) kept for explicit passes' render passes with other load / store ops (getRenderPassForOps)
+        for (const auto& attachment : attachmentDescs)
+            fb->attachmentDescs.push_back(attachment);
+        for (const auto& reference : colorAttachmentRefs)
+            fb->colorAttachmentRefs.push_back(reference);
+        fb->depthAttachmentRef = depthAttachmentRef;
+        fb->hasDepthAttachment = desc.depthAttachment.valid();
+        fb->hasShadingRateAttachment = desc.shadingRateAttachment.valid();
+
         auto renderPassInfo = vk::RenderPassCreateInfo2()
                     .setAttachmentCount(uint32_t(attachmentDescs.size()))
                     .setPAttachments(attachmentDescs.data())
@@ -272,6 +281,92 @@ namespace nvrhi::vulkan
             m_Context.device.destroyRenderPass(renderPass);
             renderPass = nullptr;
         }
+
+        for (auto& [ops, pass] : m_RenderPassesForOps)
+            m_Context.device.destroyRenderPass(pass);
+        m_RenderPassesForOps.clear();
+    }
+
+    static vk::AttachmentLoadOp convertLoadOp(LoadOp op)
+    {
+        switch (op)
+        {
+            case LoadOp::Clear: return vk::AttachmentLoadOp::eClear;
+            case LoadOp::DontCare: return vk::AttachmentLoadOp::eDontCare;
+            default: return vk::AttachmentLoadOp::eLoad;
+        }
+    }
+
+    static vk::AttachmentStoreOp convertStoreOp(StoreOp op)
+    {
+        return op == StoreOp::DontCare ? vk::AttachmentStoreOp::eDontCare : vk::AttachmentStoreOp::eStore;
+    }
+
+    vk::RenderPass Framebuffer::getRenderPassForOps(const RenderPassDesc& ops)
+    {
+        // The ops as a key: 3 bits per attachment (load: 2, store: 1), the colour attachments first, then depth and
+        // stencil; all Load / Store is the framebuffer's own render pass
+        uint64_t key = 0;
+        const size_t colorCount = colorAttachmentRefs.size();
+        for (size_t i = 0; i < colorCount; i++)
+        {
+            const RenderPassAttachment attachment = i < ops.colorAttachments.size() ? ops.colorAttachments[i] : RenderPassAttachment();
+            key |= uint64_t(uint32_t(attachment.loadOp) | (uint32_t(attachment.storeOp) << 2)) << (3 * i);
+        }
+        if (hasDepthAttachment)
+        {
+            key |= uint64_t(uint32_t(ops.depthAttachment.loadOp) | (uint32_t(ops.depthAttachment.storeOp) << 2)) << (3 * colorCount);
+            key |= uint64_t(uint32_t(ops.stencilLoadOp) | (uint32_t(ops.stencilStoreOp) << 2)) << (3 * colorCount + 3);
+        }
+        if (key == 0)
+            return renderPass;
+        if (!managed || hasShadingRateAttachment)
+        {
+            // (a native framebuffer's pass isn't NVRHI's to vary; a shading-rate attachment's pass has more to it)
+            m_Context.error("beginRenderPass: load / store ops aren't supported on this framebuffer (a native one, or one "
+                "with a shading-rate attachment): it loads and stores");
+            return renderPass;
+        }
+
+        std::lock_guard lock(m_RenderPassesMutex);
+        if (auto it = m_RenderPassesForOps.find(key); it != m_RenderPassesForOps.end())
+            return it->second;
+
+        static_vector<vk::AttachmentDescription2, c_MaxRenderTargets + 2> attachments = attachmentDescs;
+        for (size_t i = 0; i < colorCount; i++)
+        {
+            const RenderPassAttachment attachment = i < ops.colorAttachments.size() ? ops.colorAttachments[i] : RenderPassAttachment();
+            attachments[i].setLoadOp(convertLoadOp(attachment.loadOp)).setStoreOp(convertStoreOp(attachment.storeOp));
+        }
+        if (hasDepthAttachment)
+        {
+            attachments[colorCount]
+                .setLoadOp(convertLoadOp(ops.depthAttachment.loadOp))
+                .setStoreOp(convertStoreOp(ops.depthAttachment.storeOp))
+                .setStencilLoadOp(convertLoadOp(ops.stencilLoadOp))
+                .setStencilStoreOp(convertStoreOp(ops.stencilStoreOp));
+        }
+
+        auto subpass = vk::SubpassDescription2()
+            .setPipelineBindPoint(vk::PipelineBindPoint::eGraphics)
+            .setColorAttachmentCount(uint32_t(colorAttachmentRefs.size()))
+            .setPColorAttachments(colorAttachmentRefs.data())
+            .setPDepthStencilAttachment(hasDepthAttachment ? &depthAttachmentRef : nullptr);
+        auto renderPassInfo = vk::RenderPassCreateInfo2()
+            .setAttachmentCount(uint32_t(attachments.size()))
+            .setPAttachments(attachments.data())
+            .setSubpassCount(1)
+            .setPSubpasses(&subpass);
+
+        vk::RenderPass pass;
+        const vk::Result res = m_Context.device.createRenderPass2(&renderPassInfo, m_Context.allocationCallbacks, &pass);
+        if (res != vk::Result::eSuccess)
+        {
+            m_Context.error(std::string("beginRenderPass: the render pass for these load / store ops couldn't be made: ") + resultToString(VkResult(res)));
+            return renderPass;
+        }
+        m_RenderPassesForOps[key] = pass;
+        return pass;
     }
 
     Object Framebuffer::getNativeObject(ObjectType objectType)
@@ -605,8 +700,87 @@ namespace nvrhi::vulkan
         }
     }
 
+    void CommandList::beginRenderPass(IFramebuffer* _framebuffer, const RenderPassDesc& desc)
+    {
+        assert(m_CurrentCmdBuf);
+        if (m_InExplicitRenderPass)
+            m_Context.error("beginRenderPass: the previous explicit render pass wasn't ended (endRenderPass)");
+        m_InExplicitRenderPass = false;
+        endRenderPassInternal();
+
+        Framebuffer* fb = checked_cast<Framebuffer*>(_framebuffer);
+        const FramebufferDesc& fbDesc = fb->desc;
+
+        // The attachments into their states now: no barrier may come inside the pass
+        if (m_EnableAutomaticBarriers)
+        {
+            for (const auto& attachment : fbDesc.colorAttachments)
+            {
+                if (attachment.valid())
+                    setTextureState(attachment.texture, attachment.subresources, ResourceStates::RenderTarget);
+            }
+            if (fbDesc.depthAttachment.valid())
+                setTextureState(fbDesc.depthAttachment.texture, fbDesc.depthAttachment.subresources,
+                    fbDesc.depthAttachment.isReadOnly ? ResourceStates::DepthRead : ResourceStates::DepthWrite);
+            if (fbDesc.shadingRateAttachment.valid())
+                setTextureState(fbDesc.shadingRateAttachment.texture, TextureSubresourceSet(0, 1, 0, 1), ResourceStates::ShadingRateSurface);
+        }
+        commitBarriers();
+
+        // The clear values, one per attachment (only Clear ones are read)
+        static_vector<vk::ClearValue, c_MaxRenderTargets + 2> clearValues;
+        for (size_t i = 0; i < fb->colorAttachmentRefs.size(); i++)
+        {
+            const Color c = i < desc.colorAttachments.size() ? desc.colorAttachments[i].clearColor : Color();
+            clearValues.push_back(vk::ClearValue(vk::ClearColorValue(std::array<float, 4>{ c.r, c.g, c.b, c.a })));
+        }
+        if (fb->hasDepthAttachment)
+            clearValues.push_back(vk::ClearValue(vk::ClearDepthStencilValue(desc.depthAttachment.clearDepth, desc.depthAttachment.clearStencil)));
+
+        m_CurrentCmdBuf->cmdBuf.beginRenderPass(vk::RenderPassBeginInfo()
+            .setRenderPass(fb->getRenderPassForOps(desc))
+            .setFramebuffer(fb->framebuffer)
+            .setRenderArea(vk::Rect2D()
+                .setOffset(vk::Offset2D(0, 0))
+                .setExtent(vk::Extent2D(fb->framebufferInfo.width, fb->framebufferInfo.height)))
+            .setClearValueCount(uint32_t(clearValues.size()))
+            .setPClearValues(clearValues.data()),
+            vk::SubpassContents::eInline);
+        m_CurrentCmdBuf->referencedResources.push_back(_framebuffer);
+
+        // setGraphicsState / setMeshletState with this framebuffer draw into this pass (and set their pipeline and
+        // bindings again)
+        m_CurrentGraphicsState = GraphicsState();
+        m_CurrentGraphicsState.framebuffer = _framebuffer;
+        m_CurrentMeshletState = MeshletState();
+        m_CurrentMeshletState.framebuffer = _framebuffer;
+        m_InExplicitRenderPass = true;
+        m_ExplicitPassDiscards = desc.depthAttachment.storeOp == StoreOp::DontCare || desc.stencilStoreOp == StoreOp::DontCare;
+        for (const RenderPassAttachment& attachment : desc.colorAttachments)
+            m_ExplicitPassDiscards = m_ExplicitPassDiscards || attachment.storeOp == StoreOp::DontCare;
+    }
+
     void CommandList::endRenderPass()
     {
+        if (!m_InExplicitRenderPass)
+            return;   // (already ended: by an operation that can't be in a pass, which reported it)
+        m_InExplicitRenderPass = false;
+        endRenderPassInternal();
+    }
+
+    void CommandList::endRenderPassInternal()
+    {
+        if (m_InExplicitRenderPass)
+        {
+            // Every attachment stored: the pass resumes as an implicit one (loading what was stored), only slower. One
+            // that discards: its attachments are lost here, so say so.
+            if (m_ExplicitPassDiscards)
+                m_Context.error("An operation that can't be recorded inside a render pass (a copy, clear, dispatch, query, a "
+                    "barrier or another framebuffer) ended the explicit render pass begun by beginRenderPass, which stores "
+                    "attachments with DontCare: they are undefined from here. Record it before beginRenderPass or after endRenderPass.");
+            m_InExplicitRenderPass = false;
+            m_ExplicitPassDiscards = false;
+        }
         if (m_CurrentGraphicsState.framebuffer || m_CurrentMeshletState.framebuffer)
         {
             m_CurrentCmdBuf->cmdBuf.endRenderPass();
@@ -646,7 +820,7 @@ namespace nvrhi::vulkan
 
         if (m_CurrentGraphicsState.framebuffer != state.framebuffer || anyBarriers /* because barriers cannot be set inside a renderpass */)
         {
-            endRenderPass();
+            endRenderPassInternal();
         }
 
         auto desc = state.framebuffer->getDesc();

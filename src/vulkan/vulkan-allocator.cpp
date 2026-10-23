@@ -76,7 +76,12 @@ namespace nvrhi::vulkan
         const vk::MemoryPropertyFlags memProperties = vk::MemoryPropertyFlagBits::eDeviceLocal;
         const bool enableDeviceAddress = false;
         const bool enableMemoryExport = (texture->desc.sharedResourceFlags & SharedResourceFlags::Shared) != 0;
-        const vk::Result res = allocateMemory(texture, memRequirements, memProperties, enableDeviceAddress, enableMemoryExport, texture->image, nullptr);
+        vk::Result res = vk::Result::eErrorOutOfDeviceMemory;
+        // (Draxor fork) a transient attachment in lazily allocated memory (a tiler may never back it), else as any texture
+        if (texture->desc.isTransient)
+            res = allocateMemory(texture, memRequirements, memProperties | vk::MemoryPropertyFlagBits::eLazilyAllocated, enableDeviceAddress, false, texture->image, nullptr);
+        if (res != vk::Result::eSuccess)
+            res = allocateMemory(texture, memRequirements, memProperties, enableDeviceAddress, enableMemoryExport, texture->image, nullptr);
         CHECK_VK_RETURN(res)
 
         m_Context.device.bindImageMemory(texture->image, texture->memory, 0);

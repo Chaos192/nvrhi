@@ -115,7 +115,7 @@ namespace nvrhi::vulkan
 
     void CommandList::beginTimerQuery(ITimerQuery* _query)
     {
-        endRenderPass();
+        endRenderPassInternal();
 
         TimerQuery* query = checked_cast<TimerQuery*>(_query);
 
@@ -131,7 +131,7 @@ namespace nvrhi::vulkan
 
     void CommandList::endTimerQuery(ITimerQuery* _query)
     {
-        endRenderPass();
+        endRenderPassInternal();
 
         TimerQuery* query = checked_cast<TimerQuery*>(_query);
 

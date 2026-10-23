@@ -265,6 +265,8 @@ namespace nvrhi::validation
         void setPermanentBufferState(IBuffer* buffer, ResourceStates stateBits) override;
 
         void commitBarriers() override;
+        void beginRenderPass(IFramebuffer* framebuffer, const RenderPassDesc& desc) override;
+        void endRenderPass() override;
         
         ResourceStates getTextureSubresourceState(ITexture* texture, ArraySlice arraySlice, MipLevel mipLevel) override;
         ResourceStates getBufferState(IBuffer* buffer) override;

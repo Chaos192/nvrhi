@@ -111,7 +111,7 @@ namespace nvrhi::vulkan
 
     void CommandList::setComputeState(const ComputeState& state)
     {
-        endRenderPass();
+        endRenderPassInternal();
 
         assert(m_CurrentCmdBuf);
 

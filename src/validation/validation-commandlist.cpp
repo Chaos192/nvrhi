@@ -1052,6 +1052,40 @@ namespace nvrhi::validation
         m_CommandList->commitBarriers();
     }
 
+    void CommandListWrapper::beginRenderPass(IFramebuffer* framebuffer, const RenderPassDesc& desc)
+    {
+        if (!requireOpenState())
+            return;
+        if (!requireType(CommandQueue::Graphics, "beginRenderPass"))
+            return;
+        if (!framebuffer)
+        {
+            error("beginRenderPass: framebuffer is NULL");
+            return;
+        }
+        const FramebufferDesc& fb = framebuffer->getDesc();
+        if (desc.colorAttachments.size() > fb.colorAttachments.size())
+            error("beginRenderPass: more colour attachment ops than the framebuffer has colour attachments");
+        // A transient attachment has no contents to load nor anywhere to store them
+        for (size_t i = 0; i < fb.colorAttachments.size(); i++)
+        {
+            const RenderPassAttachment ops = i < desc.colorAttachments.size() ? desc.colorAttachments[i] : RenderPassAttachment();
+            if (fb.colorAttachments[i].valid() && fb.colorAttachments[i].texture->getDesc().isTransient && (ops.loadOp == LoadOp::Load || ops.storeOp == StoreOp::Store))
+                warning("beginRenderPass: colour attachment " + std::to_string(i) + " is transient: load it with Clear or DontCare and store it with DontCare");
+        }
+        if (fb.depthAttachment.valid() && fb.depthAttachment.texture->getDesc().isTransient
+            && (desc.depthAttachment.loadOp == LoadOp::Load || desc.depthAttachment.storeOp == StoreOp::Store))
+            warning("beginRenderPass: the depth attachment is transient: load it with Clear or DontCare and store it with DontCare");
+        m_CommandList->beginRenderPass(framebuffer, desc);
+    }
+
+    void CommandListWrapper::endRenderPass()
+    {
+        if (!requireOpenState())
+            return;
+        m_CommandList->endRenderPass();
+    }
+
     ResourceStates CommandListWrapper::getTextureSubresourceState(ITexture* texture, ArraySlice arraySlice, MipLevel mipLevel)
     {
         if (!requireOpenState())

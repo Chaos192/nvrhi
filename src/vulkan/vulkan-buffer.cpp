@@ -406,7 +406,7 @@ namespace nvrhi::vulkan
 
         assert(m_CurrentCmdBuf);
 
-        endRenderPass();
+        endRenderPassInternal();
 
         m_CurrentCmdBuf->referencedResources.push_back(buffer);
 
@@ -464,7 +464,7 @@ namespace nvrhi::vulkan
 
         assert(m_CurrentCmdBuf);
 
-        endRenderPass();
+        endRenderPassInternal();
 
         if (m_EnableAutomaticBarriers)
         {

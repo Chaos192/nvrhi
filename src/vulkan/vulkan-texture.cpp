@@ -102,6 +102,13 @@ namespace nvrhi::vulkan
     static vk::ImageUsageFlags pickImageUsage(const TextureDesc& d)
     {
         const FormatInfo& formatInfo = getFormatInfo(d.format);
+
+        // (Draxor fork) A transient attachment lives on the tile only: attachment usage and nothing else
+        if (d.isTransient)
+        {
+            return vk::ImageUsageFlagBits::eTransientAttachment | ((formatInfo.hasDepth || formatInfo.hasStencil)
+                ? vk::ImageUsageFlagBits::eDepthStencilAttachment : vk::ImageUsageFlagBits::eColorAttachment);
+        }
         
         vk::ImageUsageFlags ret = vk::ImageUsageFlagBits::eTransferSrc |
                                   vk::ImageUsageFlagBits::eTransferDst;
@@ -472,7 +479,7 @@ namespace nvrhi::vulkan
 
     void CommandList::writeTexture(ITexture* _dest, uint32_t arraySlice, uint32_t mipLevel, const void* data, size_t rowPitch, size_t depthPitch)
     {
-        endRenderPass();
+        endRenderPassInternal();
 
         Texture* dest = checked_cast<Texture*>(_dest);
 
@@ -538,7 +545,7 @@ namespace nvrhi::vulkan
 
     void CommandList::resolveTexture(ITexture* _dest, const TextureSubresourceSet& dstSubresources, ITexture* _src, const TextureSubresourceSet& srcSubresources)
     {
-        endRenderPass();
+        endRenderPassInternal();
 
         Texture* dest = checked_cast<Texture*>(_dest);
         Texture* src = checked_cast<Texture*>(_src);
@@ -580,7 +587,7 @@ namespace nvrhi::vulkan
 
     void CommandList::clearTexture(ITexture* _texture, TextureSubresourceSet subresources, const vk::ClearColorValue& clearValue)
     {
-        endRenderPass();
+        endRenderPassInternal();
 
         Texture* texture = checked_cast<Texture*>(_texture);
         assert(texture);
@@ -617,7 +624,7 @@ namespace nvrhi::vulkan
 
     void CommandList::clearDepthStencilTexture(ITexture* _texture, TextureSubresourceSet subresources, bool clearDepth, float depth, bool clearStencil, uint8_t stencil)
     {
-        endRenderPass();
+        endRenderPassInternal();
 
         if (!clearDepth && !clearStencil)
         {
